@@ -1,8 +1,31 @@
 (do 
+(use 'clojure.repl)
 (use 'arcadia.core)
 (use 'arcadia.linear)
 (use 'arcadia.introspection)
-(use 'clojure.repl)
+
+
+; SpaceNavigator
+(import SpaceNavigatorDriver.SpaceNavigator)
+
+(def cube (create-primitive :cube))
+
+(SpaceNavigator/SetRotationSensitivity 1)
+(SpaceNavigator/SetTranslationSensitivity 1)
+
+(set! (.. cube transform position) (v3 0))
+
+(defn u [go] ;translation/rotation
+	(set! (.. go transform position) (.. SpaceNavigator Translation))
+	(set! (.. go transform rotation) (.. SpaceNavigator Rotation)))
+
+(defn u [go] ;translate/rotate
+	(.. go transform (Translate (.. SpaceNavigator Translation)))
+	(.. go transform (Rotate (.. SpaceNavigator Rotation eulerAngles))))
+
+(hook+ cube :update #(u %))
+
+
 
 ; Procedural Geometry
 (import UnityEngine.GameObject)
