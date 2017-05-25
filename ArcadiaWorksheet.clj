@@ -286,4 +286,13 @@
 ;  [args] (body))
 ; (def fnvrs (atom {"fn1" {:fn fn1 :go gameobj} ...}) )
 
+; {:fn-vrs {"fn1" {:fn fn1 :go gameobject}}
+;  :val-vrs {"val1" {:v 123 :go gameobject}}
+;  :controls #{[:number-dial "val1"]}
+;  :connections #{["val1" ["fn1" 0]]}}
+
 ; do this for vals (state) too. it all goes in one atom probably
+
+
+; goal is to teach someone to program in a shared VR
+; one shared camera position, a set of hands for each player
