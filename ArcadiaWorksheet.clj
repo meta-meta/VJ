@@ -280,4 +280,10 @@
 
 
 
-; TODO: 
+; TODO: sketch geometry for some spec types and functions
+; (defnvr some-func "defines a fn and adds a geometric
+; representation of it to the scene"
+;  [args] (body))
+; (def fnvrs (atom {"fn1" {:fn fn1 :go gameobj} ...}) )
+
+; do this for vals (state) too. it all goes in one atom probably
