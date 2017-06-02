@@ -4,79 +4,8 @@
   (use 'arcadia.core)
   (use 'arcadia.linear)
   (use 'arcadia.introspection)
-  
-  ; state of inputs
-  (def s 
-    (atom 
-      {
-       :knobs (zipmap (range 1 33) (repeat 0))
-       :space-mouse {
-                     :go nil ;the gameobject to manipulate
-                     :translation (v3 0)
-                     :rotation (qt)
-                     }
-       :keys {:space false}}))
-  
-  ; (pprint (:space-mouse @s))
-  
-  
-  ; SpaceNavigator
-  (import SpaceNavigatorDriver.SpaceNavigator)
-  (SpaceNavigator/SetRotationSensitivity 5)
-  (SpaceNavigator/SetTranslationSensitivity 5)
-  
-  ; Keyboard
-  (import UnityEngine.Input)
-  (import UnityEngine.KeyCode)
-  
-  
-  ; (defn u [go] ;translate/rotate
-  ; 	(.. go transform (Translate (.. SpaceNavigator Translation)))
-  ; 	(.. go transform (Rotate (.. SpaceNavigator Rotation eulerAngles))))
-  
-  (defn u [go]
-    (swap! s assoc :space-mouse {
-                                 :translation (.. SpaceNavigator Translation)
-                                 :rotation (.. SpaceNavigator Rotation)})
-    (swap! s assoc :keys {
-                          :space (Input/GetKey (. KeyCode Space))
-                          :a (Input/GetKey (. KeyCode A))
-                          :b (Input/GetKey (. KeyCode B))
-                          :c (Input/GetKey (. KeyCode C))
-                          }))
-  
-  (def state-obj (GameObject. "StateObj"))
-  (hook+ state-obj :update #(u %))
-  
-  
-  
-  ; spawn a cube for each key
-  ; move the cube if corresponding key is down while manipulating spacemouse
-  (->> [:a :b :c :space]
-       (map 
-         #(let 
-            [
-             go (create-primitive :cube)
-             u (fn [go] 
-                 (let 
-                   [
-                    {t :translation r :rotation} 
-                    (:space-mouse @s)
-                    
-                    k (get-in @s [:keys %])]
-                   (if k 
-                     (do  
-                       (set! 
-                         (.. go transform position) 
-                         t)
-                       (set! 
-                         (.. go transform rotation) 
-                         r)))))
-             ]
-            (hook+ go :update u))))
-  
-  
-  ; Procedural Geometry
+
+    ; Procedural Geometry
   (import UnityEngine.GameObject)
   (import UnityEngine.Mesh)
   (import UnityEngine.MeshFilter)
@@ -141,15 +70,18 @@
                  (polygon-uvs sides)
                  (polygon-tris sides)))
   
-  (defn new-go [go-name] (let [
-                               mesh (Mesh.)
-                               go (GameObject.)
-                               mf (cmpt+ go MeshFilter)
-                               mr (cmpt+ go MeshRenderer)
-                               ]
-                           (set! (.. go name) go-name)
-                           (set! (.. mf mesh) mesh)
-                           [go mesh]))
+  (defn new-go
+    "returns a tuple of a new gameobject and its mesh" 
+    [go-name] 
+    (let [
+          mesh (Mesh.)
+          go (GameObject.)
+          mf (cmpt+ go MeshFilter)
+          mr (cmpt+ go MeshRenderer)
+          ]
+      (set! (.. go name) go-name)
+      (set! (.. mf mesh) mesh)
+      [go mesh]))
   
   (defn polygon 
     "returns a GameObject containing a unit polygon with n sides"
@@ -197,20 +129,21 @@
   (defn add-vecs [[a1 b1 c1] [a2 b2 c2]] [(+ a1 a2) (+ b1 b2) (+ c1 c2)])
   (defn div-vec-scalar [v s] (map #(/ % s) v))
   
-  (map (fn [p i] 
-         (let [
-               verts (map (fn [i] (nth (dod-verts 100) i)) p)
-               center (div-vec-scalar 
-                        (reduce add-vecs verts)
-                        (count verts))
-               verts-v3 (map #(apply v3 %) (conj verts center))
-               uvs (polygon-uvs 5)
-               tris (polygon-tris 5)
-               ]
-           (pentagon i verts-v3 uvs tris)
-           )
-         
-         ) (take 12 pents) (range))
+  (defn make-dodecahedron [] 
+    (map (fn [p i] 
+           (let [
+                 verts (map (fn [i] (nth (dod-verts 100) i)) p)
+                 center (div-vec-scalar 
+                          (reduce add-vecs verts)
+                          (count verts))
+                 verts-v3 (map #(apply v3 %) (conj verts center))
+                 uvs (polygon-uvs 5)
+                 tris (polygon-tris 5)
+                 ]
+             (pentagon i verts-v3 uvs tris)
+             )
+           
+           ) (take 12 pents) (range)))
   
   (import Spout.SpoutReceiver)
   (import Spout.Spout)
@@ -223,11 +156,9 @@
           senders (list-spout-senders)]
       (set! (.. sr sharingName) (nth senders (mod i (count senders))))))
   
-  (set-spout-sender "Cube" 2)
-  (set-spout-sender "Cube2" 4)
-  (set-spout-sender "Cube3" 5)
+  ; (set-spout-sender "Cube3" 5)
   
-  (methods SpoutReceiver)
+  ; (methods SpoutReceiver)
   
   
   
@@ -235,6 +166,7 @@
   ;; handle OSC
   (def osc (atom {
                   :knobs (zipmap (range 1 33) (repeat 0))
+                  :sines {1 {:f 0 :a 0}}
                   }))
   
   ;(get (:knobs @osc) 1)
@@ -246,7 +178,7 @@
     (let [cam (cmpt (object-named camera-name) "Camera")]
       (set! (.. cam fieldOfView) fov)))
   
-  (set-fov "SpoutCam" 50)
+  ; (set-fov "SpoutCam" 50)
   (defn handle-msg [msg] 
     (let [[i v] (vec (.. msg (get_args)))]
       (swap! osc assoc-in [:knobs i] v)
@@ -266,8 +198,10 @@
       )		
     )
   
-  
-  
+  (defn on-sines [msg]
+    (let [args (vec (.. msg (get_args)))
+          [n freq amp] args]
+      (swap! osc assoc-in [:sines n] { :f freq :a amp })))
   
   (defn on-bcr2000 [msg] (handle-msg msg))
   (defn on-attack [msg] (handle-attack msg))
@@ -275,8 +209,109 @@
   (def osc-go (object-named "OSC"))
   (def osc-in (cmpt osc-go "OscIn"))
   (.. osc-in (Map "/bcr2000" on-bcr2000))
-  (.. osc-in (Map "/attack" on-attack))
-  )
+  ; (.. osc-in (Map "/attack" on-attack))
+  ; (.. osc-in (Map "/sines" on-sines))
+  
+  
+  ; state of inputs
+  (def s 
+    (atom 
+      {
+       :knobs (zipmap (range 1 33) (repeat 0))
+       :space-mouse {
+                     :go nil ;the gameobject to manipulate
+                     :translation (v3 0)
+                     :rotation (qt)
+                     }
+       :keys {:space false}}))
+  
+  ; (pprint (:space-mouse @s))
+  
+  
+  ; SpaceNavigator
+  (import SpaceNavigatorDriver.SpaceNavigator)
+  (SpaceNavigator/SetRotationSensitivity 1)
+  (SpaceNavigator/SetTranslationSensitivity 1)
+  
+  ; Keyboard
+  (import UnityEngine.Input)
+  (import UnityEngine.KeyCode)
+  
+  
+  ; (defn u [go] ;translate/rotate
+  ; 	(.. go transform (Translate (.. SpaceNavigator Translation)))
+  ; 	(.. go transform (Rotate (.. SpaceNavigator Rotation eulerAngles))))
+  
+  (defn u [go]
+    (swap! s assoc :space-mouse {
+                                 :translation (.. SpaceNavigator Translation)
+                                 :rotation (.. SpaceNavigator Rotation)})
+    (swap! s assoc :keys {
+                          :space (Input/GetKey (. KeyCode Space))
+                          :a (Input/GetKey (. KeyCode A))
+                          :b (Input/GetKey (. KeyCode B))
+                          :c (Input/GetKey (. KeyCode C))
+                          }))
+  ; Track keyboard and spacemouse state
+  ; (def state-obj (GameObject. "StateObj"))
+  ; (hook+ state-obj :update #(u %))
+  
+  
+  
+  ; spawn a cube for each key
+  ; move the cube if corresponding key is down while manipulating spacemouse
+  ; (->> [:a :b :c :space]
+  ;      (map 
+  ;        #(let 
+  ;           [
+  ;            go (create-primitive :cube)
+  ;            u (fn [go] 
+  ;                (let 
+  ;                  [
+  ;                   {t :translation r :rotation} 
+  ;                   (:space-mouse @s)
+                    
+  ;                   k (get-in @s [:keys %])]
+  ;                  (if k 
+  ;                    (do  
+  ;                      (set! 
+  ;                        (.. go transform position) 
+  ;                        t)
+  ;                      (set! 
+  ;                        (.. go transform rotation) 
+  ;                        r)))))
+  ;            ]
+  ;           (hook+ go :update u))))
+
+  
+  ; (defn update-sphere [go] 
+  ;   (let [{{f :f a :a} 1} (:sines @osc)]
+  ;     (set! (.. go transform position) (v3 5 (* 100000 a) 0))
+  ;     ))
+  
+  ; (let [go (create-primitive :sphere)]
+  ;   (hook+ go :update #(update-sphere %))
+  ;   )
+  
+  (def sphere (create-primitive :sphere))
+  
+  (defn on-sines [msg]
+    (let [args (vec (.. msg (get_args)))
+          [n freq amp] args]
+      (when (= n 1)
+        (set! (.. sphere transform position) 
+              (v3 5 5 (* 0.1 freq)))
+        )
+      ))
+  (.. osc-in (Map "/sines" #(on-sines %)))
+  
+  
+  
+      )
+
+
+
+
 
 
 
