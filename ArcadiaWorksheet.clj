@@ -293,16 +293,25 @@
   ;   (hook+ go :update #(update-sphere %))
   ;   )
   
-  (def sphere (create-primitive :sphere))
+
+  (defn mk-spheres [num]
+    (let [keys (range 1 (+ num 1))]
+      (zipmap keys (map (fn [k] (create-primitive :sphere)) keys))))
   
+  (def spheres (mk-spheres 20))
+
   (defn on-sines [msg]
     (let [args (vec (.. msg (get_args)))
-          [n freq amp] args]
-      (when (= n 1)
-        (set! (.. sphere transform position) 
-              (v3 5 5 (* 0.1 freq)))
-        )
+          [n freq amp] args
+          sphere (spheres n)]
+      (set! (.. sphere transform position) 
+              (v3 (* freq 0.01) (* 100 amp) 0))
       ))
+
+  ; (Mathf/Pow 2 10)
+  ; (->> (range 15) (map #(Mathf/Pow 2 %)) (map #(Mathf/Log % 2)))
+  ; (methods Mathf)
+
   (.. osc-in (Map "/sines" #(on-sines %)))
   
   
