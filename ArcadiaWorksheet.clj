@@ -1,101 +1,143 @@
 (do 
-  (use 'clojure.repl)
-  (use '[clojure.pprint :only (pprint)])
-  (use 'arcadia.core)
-  (use 'arcadia.linear)
-  (use 'arcadia.introspection)
-
-    ; Procedural Geometry
-  (import UnityEngine.GameObject)
-  (import UnityEngine.Mesh)
-  (import UnityEngine.MeshFilter)
-  (import UnityEngine.MeshRenderer)
-  (import UnityEngine.Mathf)
-  (import UnityEngine.Vector2)
-  (import UnityEngine.Vector3)
+  (do ; REPL convenience
+    (use 'clojure.repl)
+    (use '[clojure.pprint :only (pprint)])
+    (defn ffn "find function - pretty prints the result of call apropos with given string" 
+      [s] (pprint (apropos s)))
+    (comment ;usage
+      (ffn "con") ;find fns containing "con" 
+      ))
   
-  (def TWO_PI (* 2 (.. Mathf PI)))
-  
-  (defn polygon-verts-2d 
-    "returns 2d vectors of a unit polygon with n sides" 
-    [sides]
-    (->> (range sides)
-         (map 
-           (fn [n] 
-             [(.. Mathf (Cos (* (/ TWO_PI sides) n)))
-              (.. Mathf (Sin (* (/ TWO_PI sides) n)))
-              ]))
-         (cons [0 0])
-         (reverse)))
-  
-  (defn polygon-verts [sides]
-    (map 
-      (fn [[x y]] (v3 x 0 y))
-      (polygon-verts-2d sides)))
-  
-  
-  (defn polygon-uvs [sides]
-    (map 
-      (fn [[x y]] (v2 x y))
-      (polygon-verts-2d sides)))
-  
-  (defn polygon-tris [sides]
-    (->>
-      (range sides)
-      (map (fn [n] 
-             [n 
-              (mod (+ 1 n) sides) 
-              sides]))
-      flatten))
-  
-  (defn polygon-tris-flipped [sides]
-    (->>
-      (range sides)
-      (map (fn [n] [ 
-                    sides
-                    (mod (+ 1 n) sides) 
-                    n
-                    ]))
-      flatten))
-  
-  (defn update-mesh [mesh verts uvs tris]
-    (.. mesh (Clear))
-    (set! (.. mesh vertices) (into-array Vector3 verts))
-    (set! (.. mesh uv) (into-array Vector2 uvs))
-    (set! (.. mesh triangles) (into-array Int32 tris)))
-  
-  (defn generate-polygon-mesh [mesh sides]
-    (update-mesh mesh 
-                 (polygon-verts sides)
-                 (polygon-uvs sides)
-                 (polygon-tris sides)))
-  
-  (defn new-go
-    "returns a tuple of a new gameobject and its mesh" 
-    [go-name] 
-    (let [
-          mesh (Mesh.)
-          go (GameObject.)
-          mf (cmpt+ go MeshFilter)
-          mr (cmpt+ go MeshRenderer)
-          ]
-      (set! (.. go name) go-name)
-      (set! (.. mf mesh) mesh)
-      [go mesh]))
-  
-  (defn polygon 
-    "returns a GameObject containing a unit polygon with n sides"
-    ([sides]
-     (let [[go mesh] (new-go (str "poly-" sides))]
-       (generate-polygon-mesh mesh sides)
+  (do ; Procedural Geometry
+    (use 'arcadia.core)
+    (use 'arcadia.linear)
+    (use 'arcadia.introspection)
+    (import UnityEngine.GameObject)
+    (import UnityEngine.Mesh)
+    (import UnityEngine.MeshFilter)
+    (import UnityEngine.MeshRenderer)
+    (import UnityEngine.Mathf)
+    (import UnityEngine.Vector2)
+    (import UnityEngine.Vector3)
+    
+    (defn new-go-mesh "returns a new GameObject with mesh" 
+      ([] (let [mesh (Mesh.)
+                go (GameObject.)
+                mf (cmpt+ go MeshFilter)
+                mr (cmpt+ go MeshRenderer)]
+            (set! (.. mf mesh) mesh)
+            go))
+      ([go-name] (let [go (new-go-mesh)]
+                   (set! (.. go name) go-name)
+                   go)))
+    
+    (defn mesh "returns mesh given GameObject or name of GameObject"
+      [go-or-name]
+      (let [go (if (string? go-or-name) 
+                 (object-named go-or-name)
+                 go-or-name)]
+        (.. (cmpt go MeshFilter) mesh)))
+    
+    (defn update-mesh! "clears the mesh and sets verts, uvs and tris given a mesh or GameObject"
+      [go-or-mesh verts uvs tris]
+      (let [is-mesh (= Mesh(type go-or-mesh))
+            mesh (if is-mesh go-or-mesh (mesh go-or-mesh))]
+        (.. mesh (Clear))
+        (set! (.. mesh vertices) (into-array Vector3 verts))
+        (set! (.. mesh uv) (into-array Vector2 uvs))
+        (set! (.. mesh triangles) (into-array Int32 tris))))
+    
+    
+    ;Polygon
+    (def TWO_PI (* 2 (.. Mathf PI)))
+    
+    (defn polygon-verts-2d "returns a list of 2d vectors: vertices(including center) of a unit polygon with n sides centered at [0,0]" 
+      [sides]
+      (->> (range sides)
+           (map 
+             (fn [n] 
+               [(.. Mathf (Cos (* (/ TWO_PI sides) n)))
+                (.. Mathf (Sin (* (/ TWO_PI sides) n)))
+                ]))
+           (cons [0 0])
+           (reverse)))
+    
+    (defn polygon-tris "returns a list of ints representing triangles consisting of vertex indices, considering the center vertex"
+      [sides]
+      (->>
+        (range sides)
+        (map (fn [n] 
+               [n 
+                (mod (+ 1 n) sides) 
+                sides]))
+        flatten))
+    
+    (defn polygon-tris-flipped "returns a list of ints representing triangles(normals flipped) consisting of vertex indices, considering the center vertex"
+      [sides]
+      (->>
+        (range sides)
+        (map (fn [n] [ 
+                      sides
+                      (mod (+ 1 n) sides) 
+                      n
+                      ]))
+        flatten))
+    
+    (defn verts-2d->v3-xy "returns a list of Vector3 from verts-2d on x-y-plane"
+      [verts-2d]
+      (->> verts-2d
+           (map (fn [[x y]] (v3 x 0 y)))))
+    
+    (defn verts-2d->v2 "returns a list of Vector2 from verts-2d"
+      [verts-2d]
+      (->> verts-2d
+           (map #(apply v2 %))))
+    
+    (defn generate-polygon-mesh! "updates mesh with geometry for polygon of n sides"
+      [mesh sides]
+      (let [verts-2d (polygon-verts-2d sides)]
+      (update-mesh! mesh 
+                    (verts-2d->v3-xy verts-2d)
+                    (verts-2d->v2 verts-2d)
+                    (polygon-tris sides))))
+    
+    (defn polygon 
+      "returns a GameObject containing a n-sided polygon of radius 1 on the xy plane"
+      ([sides]
+       (let [go (new-go-mesh (str "poly-" sides))
+             mesh (mesh go)]
+         (generate-polygon-mesh! mesh sides)
+         go))
+      ([go sides] 
+       (generate-polygon-mesh! (mesh go) sides)
        go))
-    ([go sides] 
-     (generate-polygon-mesh (.. (cmpt go MeshFilter) mesh) sides)
-     go))
+    
+    (comment ;usage
+      (new-go-mesh "heyo") ;new GameObject named "heyo" which has been added to the scene
+      (mesh (object-named "heyo")) ;the mesh attached to the GameObject named "heyo"
+      (mesh "heyo") ;the mesh attached to the GameObject named "heyo"
+      (polygon-verts-2d 3) ;([-0.4999999 -0.8660254] [-0.5000001 0.8660254] [1.0 0.0] [0 0])
+      (verts-2d->v3-xy [[0 1][2 3]]) ;(#unity/Vector3 [0.0 0.0 1.0] #unity/Vector3 [2.0 0.0 3.0])
+      (verts-2d->v2 [[0 1][2 3]]) ;(#unity/Vector2 [0.0 1.0] #unity/Vector2 [2.0 3.0])
+      (polygon-tris 3) ;(0 1 3 1 2 3 2 0 3)
+      (polygon-tris-flipped 3) ;(3 1 0 3 2 1 3 0 2)
+      (polygon 5) ;new GameObject named "poly-5" with a pentagon or radius 1 on xy plane
+      )
+    (doc new-go-mesh)
+    (doc mesh)
+    (doc update-mesh!)
+    
+    (doc polygon-verts-2d)
+    (doc polygon-tris)
+    (doc polygon-tris-flipped)
+    (doc verts-2d->v3-xy)
+    (doc verts-2d->v2)
+    (doc generate-polygon-mesh!)
+    (doc polygon)
+    "Procedural Geometry ready")
   
   
   
-      
   (defn dod-verts [r]
     (let [
           phi (/ (+ 1 (Mathf/Sqrt 5)) 2)
@@ -122,13 +164,14 @@
   (defn pentagon 
     "returns a GameObject"
     [i verts-v3 uvs tris]	
-    (let [[go mesh] (new-go (str "pent-" i))]
-      (update-mesh mesh verts-v3 uvs tris)
+    (let [[go mesh] (new-go-mesh (str "pent-" i))]
+      (update-mesh! mesh verts-v3 uvs tris)
       go))
   
   (defn add-vecs [[a1 b1 c1] [a2 b2 c2]] [(+ a1 a2) (+ b1 b2) (+ c1 c2)])
   (defn div-vec-scalar [v s] (map #(/ % s) v))
   
+  ; TODO make each pentagon its own GameObject centered at center
   (defn make-dodecahedron [] 
     (map (fn [p i] 
            (let [
@@ -144,6 +187,15 @@
              )
            
            ) (take 12 pents) (range)))
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   (import Spout.SpoutReceiver)
   (import Spout.Spout)
@@ -219,7 +271,7 @@
       {
        :knobs (zipmap (range 1 33) (repeat 0))
        :space-mouse {
-                     :go nil ;the gameobject to manipulate
+                     :go nil ;the GameObject to manipulate
                      :translation (v3 0)
                      :rotation (qt)
                      }
@@ -330,8 +382,8 @@
 ;  [args] (body))
 ; (def fnvrs (atom {"fn1" {:fn fn1 :go gameobj} ...}) )
 
-; {:fn-vrs {"fn1" {:fn fn1 :go gameobject}}
-;  :val-vrs {"val1" {:v 123 :go gameobject}}
+; {:fn-vrs {"fn1" {:fn fn1 :go GameObject}}
+;  :val-vrs {"val1" {:v 123 :go GameObject}}
 ;  :controls #{[:number-dial "val1"]}
 ;  :connections #{["val1" ["fn1" 0]]}}
 
